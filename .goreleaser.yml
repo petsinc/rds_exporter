@@ -1,3 +1,5 @@
+version: 2
+
 dist: build
 builds:
   - binary: rds_exporter
