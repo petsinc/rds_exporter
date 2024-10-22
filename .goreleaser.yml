@@ -25,9 +25,6 @@ archives:
 snapshot:
   name_template: "{{ .ShortCommit }}"
 
-changelog:
-  skip: true
-
 release:
   github:
     owner: petsinc
