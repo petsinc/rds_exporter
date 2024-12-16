@@ -96,10 +96,10 @@ func (s *Scraper) scrapeMetric(metric Metric) error {
 	now := time.Now()
 	end := now.Add(-Delay)
 
-	// If metric.statistics is empty, default to ["Average"] for backwards compatibility
+	// If metric.statistics is empty, default to all
 	stats := metric.statistics
 	if stats == nil || len(stats) == 0 {
-		stats = []string{"Average"}
+		stats = []string{"Average", "Sum", "Minimum", "Maximum"}
 	}
 
 	params := &cloudwatch.GetMetricStatisticsInput{

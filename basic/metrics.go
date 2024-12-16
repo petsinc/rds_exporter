@@ -95,7 +95,6 @@ var Metrics = []Metric{
 		cwName:         "DatabaseConnections",
 		prometheusName: "aws_rds_database_connections",
 		prometheusHelp: "The number of database connections in use. Units: Count",
-		statistics:     []string{"Sum", "Average"},
 	},
 	{
 		cwName:         "Deadlocks",
