@@ -1,13 +1,13 @@
 package basic
 
 import (
-	"sync"
-	"time"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/percona/rds_exporter/config"
 )
@@ -96,51 +96,75 @@ func (s *Scraper) scrapeMetric(metric Metric) error {
 	now := time.Now()
 	end := now.Add(-Delay)
 
-	params := &cloudwatch.GetMetricStatisticsInput{
-		EndTime:   aws.Time(end),
-		StartTime: aws.Time(end.Add(-Range)),
+	// If metric.statistics is empty, default to ["Average"] for backwards compatibility
+	stats := metric.statistics
+	if stats == nil || len(stats) == 0 {
+		stats = []string{"Average"}
+	}
 
+	params := &cloudwatch.GetMetricStatisticsInput{
+		EndTime:    aws.Time(end),
+		StartTime:  aws.Time(end.Add(-Range)),
 		Period:     aws.Int64(int64(Period.Seconds())),
 		MetricName: aws.String(metric.cwName),
 		Namespace:  aws.String("AWS/RDS"),
-		Dimensions: []*cloudwatch.Dimension{},
-		Statistics: aws.StringSlice([]string{"Average"}),
-		Unit:       nil,
+		Dimensions: []*cloudwatch.Dimension{
+			{
+				Name:  aws.String("DBInstanceIdentifier"),
+				Value: aws.String(s.instance.Instance),
+			},
+		},
+		Statistics: aws.StringSlice(stats),
 	}
 
-	params.Dimensions = append(params.Dimensions, &cloudwatch.Dimension{
-		Name:  aws.String("DBInstanceIdentifier"),
-		Value: aws.String(s.instance.Instance),
-	})
-
-	// Call CloudWatch to gather the datapoints
 	resp, err := s.svc.GetMetricStatistics(params)
 	if err != nil {
 		return err
 	}
 
-	// There's nothing in there, don't publish the metric
 	if len(resp.Datapoints) == 0 {
 		return nil
 	}
 
-	// Pick the latest datapoint
 	dp := getLatestDatapoint(resp.Datapoints)
-
-	// Get the metric.
-	v := aws.Float64Value(dp.Average)
-	switch metric.cwName {
-	case "EngineUptime":
-		// "Fake EngineUptime -> node_boot_time with time.Now().Unix() - EngineUptime."
-		v = float64(time.Now().Unix() - int64(v))
+	if dp == nil {
+		return nil
 	}
 
-	// Send metric.
-	s.ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc(metric.prometheusName, metric.prometheusHelp, nil, s.constLabels),
-		prometheus.GaugeValue,
-		v,
-	)
+	// For each requested statistic, build and send the Prometheus metric
+	for _, stat := range stats {
+		var value float64
+
+		switch stat {
+		case "Average":
+			value = aws.Float64Value(dp.Average)
+		case "Sum":
+			value = aws.Float64Value(dp.Sum)
+		case "Maximum":
+			value = aws.Float64Value(dp.Maximum)
+		case "Minimum":
+			value = aws.Float64Value(dp.Minimum)
+		default:
+			continue
+		}
+
+		switch metric.cwName {
+		case "EngineUptime":
+			value = float64(time.Now().Unix() - int64(value))
+		}
+
+		// Append the statistic name to help identify them in Prometheus.
+		lowerStat := strings.ToLower(stat)
+		nameWithStat := metric.prometheusName + "_" + lowerStat
+		helpWithStat := metric.prometheusHelp + " (" + lowerStat + ")"
+
+		// Emit the Prometheus metric
+		s.ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc(nameWithStat, helpWithStat, nil, s.constLabels),
+			prometheus.GaugeValue,
+			value,
+		)
+	}
 
 	return nil
 }
