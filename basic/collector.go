@@ -28,6 +28,7 @@ type Metric struct {
 	cwName         string
 	prometheusName string
 	prometheusHelp string
+	statistics     []string
 }
 
 type Collector struct {
