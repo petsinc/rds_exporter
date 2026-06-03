@@ -33,13 +33,13 @@ changelog:
   disable: true
 release:
   github:
-    owner: percona
+    owner: petsinc
     name: rds_exporter
   draft: true
   prerelease: auto
 dockers_v2:
   - images:
-      - "ghcr.io/percona/rds_exporter"
+      - "ghcr.io/petsinc/rds_exporter"
     tags:
       - "{{.Major}}.{{.Minor}}"
       - "{{.Version}}"
